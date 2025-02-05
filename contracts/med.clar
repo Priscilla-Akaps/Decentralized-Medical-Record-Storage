@@ -72,3 +72,34 @@
         { contact: contact }
     ))
 )
+
+
+;; Add to data maps
+(define-map medical-history
+    { patient: principal, record-id: uint }
+    {
+        diagnosis: (string-utf8 500),
+        date: uint,
+        doctor: principal,
+        hospital: (string-utf8 100)
+    }
+)
+
+(define-data-var record-counter uint u0)
+
+;; Add public function
+(define-public (add-history-record (diagnosis (string-utf8 500)) (hospital (string-utf8 100)))
+    (let
+        ((new-id (+ (var-get record-counter) u1)))
+        (var-set record-counter new-id)
+        (ok (map-set medical-history
+            { patient: tx-sender, record-id: new-id }
+            {
+                diagnosis: diagnosis,
+                date: stacks-block-height,
+                doctor: tx-sender,
+                hospital: hospital
+            }
+        ))
+    )
+)
