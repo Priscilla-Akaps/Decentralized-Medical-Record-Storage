@@ -138,3 +138,36 @@
         ))
     )
 )
+
+
+
+
+;; Add to data maps
+(define-map test-results
+    { patient: principal, test-id: uint }
+    {
+        test-name: (string-utf8 100),
+        result: (string-utf8 500),
+        date: uint,
+        lab: (string-utf8 100)
+    }
+)
+
+(define-data-var test-counter uint u0)
+
+;; Add public function
+(define-public (add-test-result (test-name (string-utf8 100)) (result (string-utf8 500)) (lab (string-utf8 100)))
+    (let
+        ((new-id (+ (var-get test-counter) u1)))
+        (var-set test-counter new-id)
+        (ok (map-set test-results
+            { patient: tx-sender, test-id: new-id }
+            {
+                test-name: test-name,
+                result: result,
+                date: stacks-block-height,
+                lab: lab
+            }
+        ))
+    )
+)
