@@ -171,3 +171,27 @@
         ))
     )
 )
+
+
+
+;; Add to data maps
+(define-map insurance-info
+    { patient: principal }
+    {
+        provider: (string-utf8 100),
+        policy-number: (string-utf8 50),
+        valid-until: uint
+    }
+)
+
+;; Add public function
+(define-public (update-insurance (provider (string-utf8 100)) (policy-number (string-utf8 50)) (valid-days uint))
+    (ok (map-set insurance-info
+        { patient: tx-sender }
+        {
+            provider: provider,
+            policy-number: policy-number,
+            valid-until: (+ stacks-block-height (* valid-days u144))
+        }
+    ))
+)
