@@ -103,3 +103,38 @@
         ))
     )
 )
+
+
+
+
+;; Add to data maps
+(define-map prescriptions
+    { patient: principal, prescription-id: uint }
+    {
+        medication: (string-utf8 100),
+        dosage: (string-utf8 50),
+        doctor: principal,
+        date: uint,
+        valid-until: uint
+    }
+)
+
+(define-data-var prescription-counter uint u0)
+
+;; Add public function
+(define-public (add-prescription (medication (string-utf8 100)) (dosage (string-utf8 50)) (valid-days uint))
+    (let
+        ((new-id (+ (var-get prescription-counter) u1)))
+        (var-set prescription-counter new-id)
+        (ok (map-set prescriptions
+            { patient: tx-sender, prescription-id: new-id }
+            {
+                medication: medication,
+                dosage: dosage,
+                doctor: tx-sender,
+                date: stacks-block-height,
+                valid-until: (+ stacks-block-height (* valid-days u144))
+            }
+        ))
+    )
+)
