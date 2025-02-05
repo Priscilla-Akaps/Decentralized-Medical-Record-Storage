@@ -57,3 +57,18 @@
         (err u403)
     ))
 )
+
+
+;; Add to data maps
+(define-map emergency-contacts
+    { patient: principal }
+    { contact: principal }
+)
+
+;; Add public function
+(define-public (set-emergency-contact (contact principal))
+    (ok (map-set emergency-contacts
+        { patient: tx-sender }
+        { contact: contact }
+    ))
+)
