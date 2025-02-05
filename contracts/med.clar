@@ -195,3 +195,26 @@
         }
     ))
 )
+
+
+
+
+;; Add to data maps
+(define-map patient-allergies
+    { patient: principal }
+    {
+        allergies: (list 20 (string-utf8 50)),
+        conditions: (list 20 (string-utf8 100))
+    }
+)
+
+;; Add public function
+(define-public (update-allergies-conditions (allergies (list 20 (string-utf8 50))) (conditions (list 20 (string-utf8 100))))
+    (ok (map-set patient-allergies
+        { patient: tx-sender }
+        {
+            allergies: allergies,
+            conditions: conditions
+        }
+    ))
+)
