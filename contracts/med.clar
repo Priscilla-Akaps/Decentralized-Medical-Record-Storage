@@ -382,3 +382,89 @@
         )
     )
 )
+
+
+
+(define-map data-exports
+    { patient: principal, export-id: uint }
+    {
+        data-hash: (buff 32),
+        timestamp: uint,
+        destination: (string-utf8 100),
+        status: (string-utf8 20)
+    }
+)
+
+(define-data-var export-counter uint u0)
+
+(define-public (create-data-export (data-hash (buff 32)) (destination (string-utf8 100)))
+    (let
+        ((new-id (+ (var-get export-counter) u1)))
+        (var-set export-counter new-id)
+        (ok (map-set data-exports
+            { patient: tx-sender, export-id: new-id }
+            {
+                data-hash: data-hash,
+                timestamp: stacks-block-height,
+                destination: destination,
+                status: u"pending"
+            }
+        ))
+    )
+)
+
+(define-public (confirm-data-export (export-id uint))
+    (let
+        ((export (unwrap! (map-get? data-exports { patient: tx-sender, export-id: export-id }) (err u404))))
+        (ok (map-set data-exports
+            { patient: tx-sender, export-id: export-id }
+            (merge export { status: u"completed" })
+        ))
+    )
+)
+
+
+(define-map record-versions
+    { patient: principal, record-id: uint, version: uint }
+    {
+        diagnosis: (string-utf8 500),
+        date: uint,
+        doctor: principal,
+        hospital: (string-utf8 100),
+        change-reason: (string-utf8 200)
+    }
+)
+
+(define-map version-counters
+    { record-id: uint }
+    { current-version: uint }
+)
+
+(define-public (update-medical-record-with-version 
+    (record-id uint)
+    (diagnosis (string-utf8 500))
+    (hospital (string-utf8 100))
+    (change-reason (string-utf8 200)))
+    (let
+        ((current-version (default-to { current-version: u0 } 
+            (map-get? version-counters { record-id: record-id })))
+         (new-version (+ (get current-version current-version) u1)))
+        (map-set version-counters
+            { record-id: record-id }
+            { current-version: new-version })
+        (ok (map-set record-versions
+            { patient: tx-sender, record-id: record-id, version: new-version }
+            {
+                diagnosis: diagnosis,
+                date: stacks-block-height,
+                doctor: tx-sender,
+                hospital: hospital,
+                change-reason: change-reason
+            }
+        ))
+    )
+)
+
+(define-read-only (get-record-version (patient principal) (record-id uint) (version uint))
+    (ok (map-get? record-versions { patient: patient, record-id: record-id, version: version }))
+)
