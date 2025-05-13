@@ -468,3 +468,87 @@
 (define-read-only (get-record-version (patient principal) (record-id uint) (version uint))
     (ok (map-get? record-versions { patient: patient, record-id: record-id, version: version }))
 )
+
+
+(define-map access-logs
+    { patient: principal, log-id: uint }
+    {
+        accessor: principal,
+        timestamp: uint,
+        access-type: (string-utf8 20),
+        data-type: (string-utf8 50)
+    }
+)
+
+(define-data-var access-log-counter uint u0)
+
+(define-public (log-data-access (patient principal) (access-type (string-utf8 20)) (data-type (string-utf8 50)))
+    (let
+        ((new-id (+ (var-get access-log-counter) u1)))
+        (var-set access-log-counter new-id)
+        (ok (map-set access-logs
+            { patient: patient, log-id: new-id }
+            {
+                accessor: tx-sender,
+                timestamp: stacks-block-height,
+                access-type: access-type,
+                data-type: data-type
+            }
+        ))
+    )
+)
+
+(define-read-only (get-access-logs (patient principal) (log-id uint))
+    (let
+        ((is-authorized (or 
+            (is-eq tx-sender patient)
+            (get has-access (default-to { has-access: false }
+                (map-get? access-permissions { patient: patient, provider: tx-sender })))
+        )))
+        (if is-authorized
+            (ok (map-get? access-logs { patient: patient, log-id: log-id }))
+            (err u403)
+        )
+    )
+)
+
+
+(define-map transfer-requests
+    { patient: principal, request-id: uint }
+    {
+        from-provider: principal,
+        to-provider: principal,
+        status: (string-utf8 20),
+        timestamp: uint,
+        record-types: (list 10 (string-utf8 50))
+    }
+)
+
+(define-data-var transfer-request-counter uint u0)
+
+(define-public (request-record-transfer (patient principal) (to-provider principal) (record-types (list 10 (string-utf8 50))))
+    (let
+        ((new-id (+ (var-get transfer-request-counter) u1)))
+        (var-set transfer-request-counter new-id)
+        (ok (map-set transfer-requests
+            { patient: patient, request-id: new-id }
+            {
+                from-provider: tx-sender,
+                to-provider: to-provider,
+                status: u"pending",
+                timestamp: stacks-block-height,
+                record-types: record-types
+            }
+        ))
+    )
+)
+
+(define-public (approve-record-transfer (request-id uint))
+    (let
+        ((request (unwrap! (map-get? transfer-requests { patient: tx-sender, request-id: request-id }) (err u404))))
+        (ok (map-set transfer-requests
+            { patient: tx-sender, request-id: request-id }
+            (merge request { status: u"approved" })
+        ))
+    )
+)
