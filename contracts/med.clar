@@ -552,3 +552,188 @@
         ))
     )
 )
+
+(define-map consent-permissions
+    { patient: principal, provider: principal, data-type: (string-utf8 50) }
+    {
+        granted: bool,
+        granted-date: uint,
+        expires-at: uint,
+        access-level: (string-utf8 20)
+    }
+)
+
+(define-map consent-history
+    { patient: principal, consent-id: uint }
+    {
+        provider: principal,
+        data-type: (string-utf8 50),
+        action: (string-utf8 20),
+        timestamp: uint,
+        expires-at: uint
+    }
+)
+
+(define-data-var consent-history-counter uint u0)
+
+(define-public (grant-data-consent 
+    (provider principal) 
+    (data-type (string-utf8 50)) 
+    (duration-blocks uint) 
+    (access-level (string-utf8 20)))
+    (let
+        ((expires-at (+ stacks-block-height duration-blocks))
+         (consent-id (+ (var-get consent-history-counter) u1)))
+        (var-set consent-history-counter consent-id)
+        (map-set consent-permissions
+            { patient: tx-sender, provider: provider, data-type: data-type }
+            {
+                granted: true,
+                granted-date: stacks-block-height,
+                expires-at: expires-at,
+                access-level: access-level
+            })
+        (map-set consent-history
+            { patient: tx-sender, consent-id: consent-id }
+            {
+                provider: provider,
+                data-type: data-type,
+                action: u"granted",
+                timestamp: stacks-block-height,
+                expires-at: expires-at
+            })
+        (ok consent-id)
+    )
+)
+
+(define-public (revoke-data-consent (provider principal) (data-type (string-utf8 50)))
+    (let
+        ((consent-id (+ (var-get consent-history-counter) u1)))
+        (var-set consent-history-counter consent-id)
+        (map-set consent-permissions
+            { patient: tx-sender, provider: provider, data-type: data-type }
+            {
+                granted: false,
+                granted-date: u0,
+                expires-at: u0,
+                access-level: u""
+            })
+        (map-set consent-history
+            { patient: tx-sender, consent-id: consent-id }
+            {
+                provider: provider,
+                data-type: data-type,
+                action: u"revoked",
+                timestamp: stacks-block-height,
+                expires-at: u0
+            })
+        (ok consent-id)
+    )
+)
+
+(define-public (extend-consent-duration 
+    (provider principal) 
+    (data-type (string-utf8 50)) 
+    (additional-blocks uint))
+    (let
+        ((existing-consent (unwrap! (map-get? consent-permissions 
+            { patient: tx-sender, provider: provider, data-type: data-type }) (err u404)))
+         (new-expiry (+ (get expires-at existing-consent) additional-blocks))
+         (consent-id (+ (var-get consent-history-counter) u1)))
+        (asserts! (get granted existing-consent) (err u400))
+        (var-set consent-history-counter consent-id)
+        (map-set consent-permissions
+            { patient: tx-sender, provider: provider, data-type: data-type }
+            (merge existing-consent { expires-at: new-expiry }))
+        (map-set consent-history
+            { patient: tx-sender, consent-id: consent-id }
+            {
+                provider: provider,
+                data-type: data-type,
+                action: u"extended",
+                timestamp: stacks-block-height,
+                expires-at: new-expiry
+            })
+        (ok consent-id)
+    )
+)
+
+(define-read-only (check-data-access-permission (patient principal) (data-type (string-utf8 50)))
+    (let
+        ((consent (map-get? consent-permissions 
+            { patient: patient, provider: tx-sender, data-type: data-type })))
+        (match consent
+            permission
+                (if (and 
+                    (get granted permission)
+                    (> (get expires-at permission) stacks-block-height))
+                    (ok { 
+                        has-access: true, 
+                        access-level: (get access-level permission),
+                        expires-at: (get expires-at permission)
+                    })
+                    (ok { 
+                        has-access: false, 
+                        access-level: u"",
+                        expires-at: u0
+                    }))
+            (ok { 
+                has-access: false, 
+                access-level: u"",
+                expires-at: u0
+            })
+        )
+    )
+)
+
+(define-read-only (get-consent-history (patient principal) (consent-id uint))
+    (if (is-eq tx-sender patient)
+        (ok (map-get? consent-history { patient: patient, consent-id: consent-id }))
+        (err u403)
+    )
+)
+
+(define-read-only (get-active-consents (patient principal) (provider principal))
+    (if (or (is-eq tx-sender patient) (is-eq tx-sender provider))
+        (ok {
+            prescriptions: (unwrap-panic (check-data-access-permission patient u"prescriptions")),
+            test-results: (unwrap-panic (check-data-access-permission patient u"test-results")),
+            medical-history: (unwrap-panic (check-data-access-permission patient u"medical-history")),
+            appointments: (unwrap-panic (check-data-access-permission patient u"appointments"))
+        })
+        (err u403)
+    )
+)
+
+(define-public (bulk-grant-consent 
+    (provider principal) 
+    (data-types (list 10 (string-utf8 50))) 
+    (duration-blocks uint) 
+    (access-level (string-utf8 20)))
+    (let
+        ((expires-at (+ stacks-block-height duration-blocks)))
+        (ok (map grant-single-consent data-types))
+    )
+)
+
+(define-private (grant-single-consent (data-type (string-utf8 50)))
+    (map-set consent-permissions
+        { patient: tx-sender, provider: contract-caller, data-type: data-type }
+        {
+            granted: true,
+            granted-date: stacks-block-height,
+            expires-at: (+ stacks-block-height u1000),
+            access-level: u"read"
+        })
+)
+
+(define-read-only (get-expiring-consents (patient principal) (blocks-threshold uint))
+    (if (is-eq tx-sender patient)
+        (ok {
+            threshold: blocks-threshold,
+            current-block: stacks-block-height,
+            check-before-block: (+ stacks-block-height blocks-threshold)
+        })
+        (err u403)
+    )
+)
