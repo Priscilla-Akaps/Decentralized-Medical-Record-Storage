@@ -737,3 +737,160 @@
         (err u403)
     )
 )
+
+(define-map verified-records
+    { patient: principal, record-hash: (buff 32) }
+    {
+        verifier: principal,
+        verification-date: uint,
+        verification-signature: (buff 64),
+        trust-score: uint,
+        verification-notes: (string-utf8 200)
+    }
+)
+
+(define-map verification-authorities
+    { authority: principal }
+    {
+        is-active: bool,
+        trust-level: uint,
+        verification-count: uint,
+        last-activity: uint
+    }
+)
+
+(define-data-var verification-counter uint u0)
+
+(define-public (register-verification-authority (authority principal) (trust-level uint))
+    (ok (map-set verification-authorities
+        { authority: authority }
+        {
+            is-active: true,
+            trust-level: trust-level,
+            verification-count: u0,
+            last-activity: stacks-block-height
+        }
+    ))
+)
+
+(define-public (verify-medical-record 
+    (patient principal) 
+    (record-hash (buff 32)) 
+    (verification-signature (buff 64)) 
+    (verification-notes (string-utf8 200)))
+    (let
+        ((authority (unwrap! (map-get? verification-authorities { authority: tx-sender }) (err u401)))
+         (new-count (+ (get verification-count authority) u1)))
+        (asserts! (get is-active authority) (err u403))
+        (map-set verification-authorities
+            { authority: tx-sender }
+            (merge authority { 
+                verification-count: new-count,
+                last-activity: stacks-block-height
+            }))
+        (ok (map-set verified-records
+            { patient: patient, record-hash: record-hash }
+            {
+                verifier: tx-sender,
+                verification-date: stacks-block-height,
+                verification-signature: verification-signature,
+                trust-score: (get trust-level authority),
+                verification-notes: verification-notes
+            }
+        ))
+    )
+)
+
+(define-public (deactivate-verification-authority (authority principal))
+    (let
+        ((existing-authority (unwrap! (map-get? verification-authorities { authority: authority }) (err u404))))
+        (ok (map-set verification-authorities
+            { authority: authority }
+            (merge existing-authority { is-active: false })
+        ))
+    )
+)
+
+(define-read-only (check-record-verification (patient principal) (record-hash (buff 32)))
+    (let
+        ((verification (map-get? verified-records { patient: patient, record-hash: record-hash })))
+        (match verification
+            record
+                (let
+                    ((verifier-authority (unwrap! (map-get? verification-authorities { authority: (get verifier record) }) (err u404))))
+                    (ok {
+                        is-verified: true,
+                        verifier: (get verifier record),
+                        verification-date: (get verification-date record),
+                        trust-score: (get trust-score record),
+                        verifier-active: (get is-active verifier-authority),
+                        verification-notes: (get verification-notes record)
+                    })
+                )
+            (ok {
+                is-verified: false,
+                verifier: 'SP000000000000000000002Q6VF78,
+                verification-date: u0,
+                trust-score: u0,
+                verifier-active: false,
+                verification-notes: u""
+            })
+        )
+    )
+)
+
+(define-read-only (get-verification-authority-status (authority principal))
+    (match (map-get? verification-authorities { authority: authority })
+        auth-data
+            (ok {
+                is-registered: true,
+                is-active: (get is-active auth-data),
+                trust-level: (get trust-level auth-data),
+                verification-count: (get verification-count auth-data),
+                last-activity: (get last-activity auth-data)
+            })
+        (ok {
+            is-registered: false,
+            is-active: false,
+            trust-level: u0,
+            verification-count: u0,
+            last-activity: u0
+        })
+    )
+)
+
+(define-read-only (get-patient-verification-summary (patient principal))
+    (if (is-eq tx-sender patient)
+        (ok {
+            patient: patient,
+            total-verified-records: (var-get verification-counter),
+            last-check: stacks-block-height
+        })
+        (err u403)
+    )
+)
+
+(define-public (batch-verify-records 
+    (patient principal) 
+    (record-hashes (list 10 (buff 32))) 
+    (verification-signature (buff 64)) 
+    (verification-notes (string-utf8 200)))
+    (let
+        ((authority (unwrap! (map-get? verification-authorities { authority: tx-sender }) (err u401))))
+        (asserts! (get is-active authority) (err u403))
+        (ok (map verify-single-record record-hashes))
+    )
+)
+
+(define-private (verify-single-record (record-hash (buff 32)))
+    (map-set verified-records
+        { patient: contract-caller, record-hash: record-hash }
+        {
+            verifier: tx-sender,
+            verification-date: stacks-block-height,
+            verification-signature: 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+            trust-score: u100,
+            verification-notes: u"Batch verification"
+        }
+    )
+)
