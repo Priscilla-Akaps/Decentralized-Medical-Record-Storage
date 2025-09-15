@@ -13,6 +13,14 @@ epoch = 3.1
 path = 'contracts/medical-alerts.clar'
 clarity_version = 3
 epoch = 3.1
+[contracts.interhospital-sharing]
+path = 'contracts/interhospital-sharing.clar'
+clarity_version = 3
+epoch = 3.1
+[contracts.medical-ai-integration]
+path = 'contracts/medical-ai-integration.clar'
+clarity_version = 3
+epoch = 3.1
 [repl.analysis]
 passes = ['check_checker']
 
